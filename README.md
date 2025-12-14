@@ -121,9 +121,6 @@ Prepares query results for downstream agents.
 - `uv` package manager - [Installation guide](https://github.com/kirenz/uv-setup)
 - Python 3.12+
 - ODBC Driver 18 for SQL Server
-  - **macOS**: `brew install msodbcsql18`
-  - **Windows**: Usually pre-installed
-  - **Linux**: [Microsoft's guide](https://learn.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server)
 
 ### API Access
 - Free Gemini API key from [Google AI Studio](https://aistudio.google.com/prompts/new_chat)
@@ -133,18 +130,28 @@ Prepares query results for downstream agents.
 
 ### 1. Clone and Install
 
-```bash
-# Clone repository
-git clone https://github.com/kirenz/gradio-adk-agent.git
-cd gradio-adk-agent
 
-# Install dependencies
+Clone repository
+
+```bash
+git clone https://github.com/kirenz/gradio-adk-agent.git
+```
+
+Navigate to project directory
+
+```bash
+cd gradio-adk-agent
+```
+
+Install dependencies
+
+```bash
 uv sync
 ```
 
 ### 2. Configure Environment
 
-Create `bi_agent/.env` (or rename `.example.env`):
+Go to folder bi_agent and rename `.example.env` to `.env` and fill in your credentials:
 
 ```env
 # Google API Key
@@ -163,7 +170,7 @@ Choose your preferred interface:
 
 **Option 1: ADK Web Interface**
 ```bash
-uv run adk web . --port 8000
+uv run adk web 
 ```
 Access at: http://127.0.0.1:8000
 
@@ -292,7 +299,7 @@ Each agent includes explicit reasoning steps:
 </thinking_process>
 ```
 
-This reduces hallucinations by 40-60%!
+
 
 ### Few-Shot Examples
 
@@ -326,7 +333,7 @@ See [bi_agent/agent.py](bi_agent/agent.py) for complete implementations.
 
 1. Start the server:
    ```bash
-   uv run adk web . --port 8000
+   uv run adk web
    ```
 
 2. Open http://127.0.0.1:8000
