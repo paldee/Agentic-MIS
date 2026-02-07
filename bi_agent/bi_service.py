@@ -17,7 +17,15 @@ from .sql_executor import execute_query
 class BIService:
     """Service class for Business Intelligence operations."""
 
-    def __init__(self, server: str, database: str, username: str, password: str):
+    def __init__(
+        self, 
+        server: str, 
+        database: str, 
+        username: str, 
+        password: str,
+        driver: str = "ODBC Driver 18 for SQL Server",
+        trust_server_certificate: bool = True
+    ):
         """
         Initialize BI Service with database credentials.
 
@@ -26,11 +34,15 @@ class BIService:
             database: Database name
             username: Database username
             password: Database password
+            driver: ODBC driver name
+            trust_server_certificate: Whether to trust server certificate
         """
         self.server = server
         self.database = database
         self.username = username
         self.password = password
+        self.driver = driver
+        self.trust_server_certificate = trust_server_certificate
         self.engine: Optional[Engine] = None
         self.schema_info: Optional[str] = None
 
@@ -46,7 +58,9 @@ class BIService:
                 self.server,
                 self.database,
                 self.username,
-                self.password
+                self.password,
+                self.driver,
+                self.trust_server_certificate
             )
 
             is_connected, message = validate_connection(self.engine)

@@ -20,7 +20,15 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 class DatabaseTools:
     """Tools for database operations that agents can use."""
 
-    def __init__(self, server: str, database: str, username: str, password: str):
+    def __init__(
+        self, 
+        server: str, 
+        database: str, 
+        username: str, 
+        password: str,
+        driver: str = "ODBC Driver 18 for SQL Server",
+        trust_server_certificate: bool = True
+    ):
         """
         Initialize database tools with connection credentials.
 
@@ -29,8 +37,10 @@ class DatabaseTools:
             database: Database name
             username: Database username
             password: Database password
+            driver: ODBC driver name
+            trust_server_certificate: Whether to trust server certificate
         """
-        self.engine = create_db_engine(server, database, username, password)
+        self.engine = create_db_engine(server, database, username, password, driver, trust_server_certificate)
 
     def execute_sql_query(self, sql_query: str) -> Dict[str, Any]:
         """
@@ -106,6 +116,9 @@ def execute_sql_and_format(sql_query: str) -> str:
         database = os.getenv("MSSQL_DATABASE")
         username = os.getenv("MSSQL_USERNAME")
         password = os.getenv("MSSQL_PASSWORD")
+        driver = os.getenv("MSSQL_DRIVER", "ODBC Driver 18 for SQL Server")
+        trust_cert_str = os.getenv("TRUST_SERVER_CERTIFICATE", "true").lower()
+        trust_cert = trust_cert_str == "true" or trust_cert_str == "yes"
 
         if not all([server, database, username, password]):
             return json.dumps({
@@ -117,7 +130,7 @@ def execute_sql_and_format(sql_query: str) -> str:
             })
 
         # Create database engine
-        engine = create_db_engine(server, database, username, password)
+        engine = create_db_engine(server, database, username, password, driver, trust_cert)
 
         # Execute query
         result = execute_query(engine, sql_query)
@@ -185,15 +198,18 @@ def get_database_schema() -> str:
         database = os.getenv("MSSQL_DATABASE")
         username = os.getenv("MSSQL_USERNAME")
         password = os.getenv("MSSQL_PASSWORD")
+        driver = os.getenv("MSSQL_DRIVER", "ODBC Driver 18 for SQL Server")
+        trust_cert_str = os.getenv("TRUST_SERVER_CERTIFICATE", "true").lower()
+        trust_cert = trust_cert_str == "true" or trust_cert_str == "yes"
 
         if not all([server, database, username, password]):
             return "Error: Database credentials not configured in environment variables"
 
         # Create database engine
-        engine = create_db_engine(server, database, username, password)
+        engine = create_db_engine(server, database, username, password, driver, trust_cert)
 
         # Get schema info
-        schema_info = get_schema_info(engine, max_tables=20)
+        schema_info = get_schema_info(engine, max_tables=100)
 
         # Close engine
         engine.dispose()

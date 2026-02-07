@@ -45,12 +45,20 @@ async def run_bi_pipeline_async(user_question: str):
         app_name='bi_agent'
     )
 
+    from bi_agent.tools import get_database_schema
+    schema_context = get_database_schema()
+    enhanced_prompt = f"""
+Here is the Database Schema you must use:
+{schema_context}
+
+User Question: {user_question}
+"""
     # Create user message
     content = types.Content(
         role='user',
-        parts=[types.Part(text=user_question)]
+        parts=[types.Part(text=enhanced_prompt)]
     )
-
+    
     # Run the complete pipeline
     events_async = root_runner.run_async(
         user_id='user',

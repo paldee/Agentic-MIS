@@ -10,7 +10,14 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.engine import Engine
 
 
-def create_db_engine(server: str, database: str, username: str, password: str, driver: str = "ODBC Driver 18 for SQL Server") -> Engine:
+def create_db_engine(
+    server: str, 
+    database: str, 
+    username: str, 
+    password: str, 
+    driver: str = "ODBC Driver 18 for SQL Server",
+    trust_server_certificate: bool = True
+) -> Engine:
     """
     Create a SQLAlchemy engine for MS SQL Server connection.
 
@@ -20,10 +27,14 @@ def create_db_engine(server: str, database: str, username: str, password: str, d
         username: Database username
         password: Database password
         driver: ODBC driver name (default: ODBC Driver 18 for SQL Server)
+        trust_server_certificate: Whether to trust server certificate (default: True)
 
     Returns:
         SQLAlchemy Engine object
     """
+    # Convert bool to yes/no for ODBC
+    trust_val = "yes" if trust_server_certificate else "no"
+
     # Build ODBC connection string (not URL-encoded yet)
     odbc_string = (
         f"DRIVER={{{driver}}};"
@@ -31,7 +42,7 @@ def create_db_engine(server: str, database: str, username: str, password: str, d
         f"DATABASE={database};"
         f"UID={username};"
         f"PWD={password};"
-        f"TrustServerCertificate=yes;"
+        f"TrustServerCertificate={trust_val};"
     )
 
     # URL-encode the entire ODBC connection string

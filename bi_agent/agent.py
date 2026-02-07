@@ -14,7 +14,6 @@ from bi_agent.tools import execute_sql_and_format, get_database_schema
 
 GEMINI_MODEL = "gemini-2.5-flash"
 
-
 # ============================================================================
 # Agent 1: Text-to-SQL (standalone)
 # ============================================================================
@@ -56,11 +55,20 @@ Do NOT include:
 
 ## Specifications
 HARD CONSTRAINTS:
-1. ALWAYS use the get_database_schema tool FIRST to retrieve the database structure
+1. DO NOT call 'get_database_schema'. The schema is provided in the user's input.
 2. Use ONLY SELECT statements (NEVER INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE)
-3. Reference ONLY tables and columns present in the schema
-4. Do NOT include semicolons at the end of queries
-5. Do NOT wrap output in markdown code blocks
+3. Reference ONLY tables and columns present in the schema.
+4. **CRITICAL RULE:** If the user asks for a column (like 'Category', 'Country', 'Region') that does NOT exist in the requested table, YOU MUST LOOK FOR FOREIGN KEYS (columns ending in 'Key' or 'ID') and JOIN the relevant tables. NEVER INVENT COLUMN NAMES.
+5. **EXACT NAME MATCHING (CRITICAL):** You MUST copy table and column names EXACTLY as they appear in the schema.
+   - Do NOT normalize, beautify, or change the casing of names.
+
+## SQL Dialect Rules (MS SQL Server / T-SQL) - CRITICAL!
+- **Limit:** Use `SELECT TOP n` (Do NOT use `LIMIT n`).
+- **Date/Time:** Use `GETDATE()` (Do NOT use `NOW()`).
+- **Date Diff:** Use `DATEDIFF(day, start_date, end_date)`.
+- **String Concat:** Use `CONCAT(a, b)` or `a + b`.
+- **Identifiers:** If table/column names have spaces, use brackets `[Column Name]` (Do NOT use backticks ` ` `).
+- **Year extraction:** Use `YEAR(date_column)` or `DATEPART(year, date_column)`.
 
 </system_prompt>
 
@@ -68,14 +76,14 @@ HARD CONSTRAINTS:
 Before generating the SQL query, follow this process:
 
 <thinking_process>
-1. Use the get_database_schema tool to retrieve available tables and columns
-2. Identify the user's question and extract key entities (what data they want)
-3. Map the question to relevant tables and columns in the schema
-4. Determine if JOINs are needed (multiple tables?)
-5. Determine if aggregation is needed (COUNT, SUM, AVG, etc.)
-6. Determine if filtering is needed (WHERE clause)
-7. Determine if sorting/limiting is needed (ORDER BY, TOP N)
-8. Construct the SQL query using proper syntax
+1. Analyze the user's request to understand the intent.
+2. Scan the provided Schema to find relevant tables.
+3. **STEP-BY-STEP COLUMN MAPPING:**
+   - User asks for: [Concept, e.g., "Total Sales"]
+   - Schema match: [Exact Column Name, e.g., "Total_Sales_Amount"]
+   - Verify: Does the name match the schema character-for-character? (Check for underscores)
+4. Determine if JOINs are needed (looking for Foreign Keys).
+5. Construct the SQL using the EXACT names found in step 3.
 </thinking_process>
 
 SQL QUERY CONSTRUCTION RULES:
@@ -112,6 +120,19 @@ SQL QUERY CONSTRUCTION RULES:
     </input>
     <output>SELECT p.Category, SUM(s.Quantity) AS Total_Quantity FROM Sales s INNER JOIN Products p ON s.Product_ID = p.Product_ID GROUP BY p.Category</output>
   </example>
+  
+  <example>
+    <input>
+      Schema: Sales (Office_Name, Discount_Amount)
+      Question: "Rank sales offices by total discount"
+    </input>
+    <output>
+      SELECT Office_Name, SUM(Discount_Amount) as Total_Discount 
+      FROM Sales 
+      GROUP BY Office_Name 
+      ORDER BY Total_Discount DESC
+    </output>
+  </example>  
 </examples>
     """,
     tools=[get_database_schema],
@@ -134,81 +155,62 @@ visualization_agent = LlmAgent(
 <system_prompt>
 
 ## Context
-You are part of a Business Intelligence pipeline that receives query results from a SQL database.
-The data comes in JSON format and needs to be transformed into visual insights.
-You have access to Python, Altair visualization library, and pandas for data manipulation.
+You are a Senior Data Visualization Engineer.
+Your goal is to visualize data using Python (Altair/Pandas).
 
 ## Objective
-Your primary goal is to generate executable Python code that creates an appropriate, insightful Altair chart from the provided data.
-Success is defined by: (1) code that runs without errors, (2) choosing the right chart type for the data, and (3) creating clear, professional visualizations.
+Analyze the data structure and generate the MOST APPROPRIATE chart.
+You must handle "edge cases" like single-row data or text-only lists gracefully.
 
-## Mode
-Act as a Senior Data Visualization Engineer with expertise in Altair and the Grammar of Graphics.
-You understand best practices for visual encoding and choose chart types that best communicate the underlying patterns in data.
+## CRITICAL LOGIC FOR CHART SELECTION (Follow Priority 1-4)
 
-## People of Interest
-Your charts will be viewed by business analysts and executives who need quick, clear insights from data.
-They value clarity, professional appearance, and actionable visual information over artistic complexity.
+1. **CASE: Text-Only List (NO Numeric Columns)**
+   - *Condition:* Data has only names/categories (e.g., List of products), no numbers.
+   - *Action:* **DO NOT use a Bar/Line Chart.** Use a **Text Table**.
+   - *Code:* Use `mark_text` to simply list the items vertically.
 
-## Attitude
-Be pragmatic in your chart choices. Choose simplicity over complexity.
-If the data is suitable for multiple chart types, choose the most conventional and immediately understandable option.
-Never create overly complex visualizations when a simple chart will suffice.
+2. **CASE: Single Row / KPI (1 Row, Multiple Metrics)**
+   - *Condition:* Data has 1 row but multiple metrics (e.g., Sales vs Profit).
+   - *Action:* **Melt** + **Bar Chart** + **Text Labels**.
+   - *Reason:* Metrics might have vastly different scales (e.g. Billions vs Millions). Labels are required.
+   - *Code:*
+     ```python
+     df_melted = df.melt(var_name='Metric', value_name='Value')
+     base = alt.Chart(df_melted).encode(x='Value:Q', y=alt.Y('Metric:N', title=None))
+     bars = base.mark_bar()
+     text = base.mark_text(align='left', dx=2).encode(text='Value:Q')
+     chart = (bars + text).properties(title='Key Metrics') # Combine layers
+     ```
 
-## Style
-Output ONLY executable Python code.
-Do NOT include:
-- Markdown code blocks (no ```python)
-- Explanatory comments (unless critical for code function)
-- Text before or after the code
-- Multiple chart variations
+3. **CASE: Time Series**
+   - *Condition:* One column is Date/Year/Month.
+   - *Action:* **Line Chart** (`mark_line`).
 
-The code MUST:
-- Import altair as alt and pandas as pd
-- Assign the final chart to a variable named 'chart'
-- Be immediately executable without modification
+4. **CASE: Categorical Comparison**
+   - *Condition:* Categories + Numbers.
+   - *Action:*
+     - Low cardinality (< 7) & Part-to-whole -> **Donut Chart** (`mark_arc`).
+     - High cardinality (> 10) or Long Names -> **Horizontal Bar** (`swap x, y`).
+     - Standard -> **Vertical Bar**.
 
 ## Specifications
 HARD CONSTRAINTS:
-1. ALWAYS assign the final visualization to a variable named 'chart'
-2. NEVER include markdown code fences (```)
-3. ALWAYS include import statements (altair and pandas)
-4. NEVER create multiple charts - generate exactly ONE chart
-5. Chart dimensions: width=400-600, height=300-400 (reasonable for dashboards)
+1. Always assign to variable `chart`.
+2. Import `altair as alt` and `pandas as pd`.
+3. **Handle Data Types:** Ensure you convert columns to numeric (`pd.to_numeric`) if they look like numbers but are strings.
+4. **No Markdown:** Output raw code only.
 
 </system_prompt>
 
 <instructions>
-Before generating the visualization code, follow this thinking process:
+Input Data: {query_results}
 
-<thinking_process>
-1. Analyze the structure of the provided data (columns, data types, number of rows)
-2. Identify the PRIMARY insight to visualize (comparison? trend? distribution? relationship?)
-3. Select the appropriate chart type based on data characteristics:
-   - Time series (date/time column) → Line chart
-   - Categorical comparison (categories + numeric values) → Bar chart
-   - Two numeric variables → Scatter plot
-   - Single aggregated metric → Bar or text
-   - Distribution of values → Histogram
-4. Determine appropriate encodings (x-axis, y-axis, color, size)
-5. Construct the Altair chart code with proper properties
-</thinking_process>
-
-CHART SELECTION GUIDE:
-- Time series data → alt.Chart(df).mark_line()
-- Categorical comparisons → alt.Chart(df).mark_bar()
-- Numeric relationships → alt.Chart(df).mark_point()
-- Single metric/KPI → alt.Chart(df).mark_bar() or mark_text()
-- Distributions → alt.Chart(df).mark_bar() with binning
-
-CODE STRUCTURE:
-1. Import libraries
-2. Create DataFrame from data
-3. Build Altair chart with:
-   - Appropriate mark type (.mark_bar(), .mark_line(), etc.)
-   - Proper encodings (.encode(x=..., y=...))
-   - Chart properties (.properties(title=..., width=..., height=...))
-   - Interactivity (.interactive()) for exploring data
+Your Task:
+1. Inspect the JSON data.
+2. Determine which CASE (1-4) applies.
+3. **If CASE 2 (Single Row), YOU MUST MELT THE DATAFRAME.**
+4. **If CASE 1 (Text Only), use mark_text.**
+5. Generate the Python code.
 </instructions>
 
 <examples>
@@ -380,10 +382,16 @@ LANGUAGE GUIDELINES:
 
   <example>
     <input>
-      Data: Customers who purchased in the last 30 days
-      Results: Empty dataset (0 rows)
+      Schema: Facts_Currency_Rates (ID_Currency, ID_Calendar, Average_Month_Rate), Dim_Currency (ID_Currency, Currency_ISO_Code)
+      Question: "Calculate the average monthly exchange rate for 'USD' in 2024"
     </input>
-    <output>No customers made purchases in the last 30 days. This indicates a significant drop in recent sales activity that may require immediate attention.</output>
+    <output>
+      SELECT AVG(FCR.Average_Month_Rate)
+      FROM Facts_Currency_Rates AS FCR
+      INNER JOIN Dim_Currency AS DC ON FCR.ID_Currency = DC.ID_Currency
+      INNER JOIN Dim_Calendar AS DCL ON FCR.ID_Calendar = DCL.ID_Calendar
+      WHERE DC.Currency_ISO_Code = 'USD' AND DCL.Calendar_Year = 2024
+    </output>
   </example>
 </examples>
     """,
@@ -503,7 +511,7 @@ root_agent = SequentialAgent(
     sub_agents=[
         text_to_sql_agent,      # Step 1: Generate SQL from question
         sql_executor_agent,      # Step 2: Execute SQL and get results
-        data_formatter_agent,    # Step 3: Format data for downstream agents
+        # data_formatter_agent,    # Step 3: Format data for downstream agents
         insight_pipeline         # Step 4: Visualize and explain (Sequential: viz → explanation)
     ]
 )
