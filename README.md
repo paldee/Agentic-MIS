@@ -9,12 +9,57 @@ An intelligent, highly optimized Business Intelligence (BI) Assistant that conve
 
 This project evolved from a standard Linear Agentic Workflow into a **Hybrid Orchestration Architecture**, reducing response latency by **~70%** and API cost by **>50%**.
 
-## Key Features
+**Key Engineering Implementations:**
+1. **Schema Diet & Injection:** Reduced token bloat by filtering out noise (logs, system tables) and injecting only core `Dim_` and `Facts_` tables directly into the prompt.
+2. **Heuristic Fast Track:** Implemented rule-based Python logic to intercept simple queries and generate charts instantly (0s latency), bypassing the LLM analysis entirely.
+3. **Hybrid Execution:** Replaced the unreliable "SQL Executor Agent" with direct Python execution, saving 1 full API call and eliminating execution hallucinations.
+4. **Unified Analyst Agent:** Merged the Visualization and Explanation agents into a single powerful 2-in-1 prompt.
+```mermaid
+flowchart TD
+    User[User Question] --> App{app.py Orchestrator}
+    
+    subgraph Step 1: SQL Generation
+        SQLAgent[text_to_sql_agent]
+    end
+    
+    subgraph Step 2: Database Execution
+        DBTool[execute_sql_and_format]
+        DB[(MS SQL Server)]
+        DBTool <-->|Query / Raw Data| DB
+    end
+    
+    subgraph Step 3: Analysis Routing
+        Check{get_heuristic_analysis}
+        Fast[Python Fast Track]
+        AI[analysis_agent]
+        Check -->|Simple Data| Fast
+        Check -->|Complex Data| AI
+    end
 
-- **High-Accuracy Text-to-SQL:** Utilizes compressed schema injection and few-shot prompting to achieve a 10/10 SQL generation accuracy, specifically optimized for MS SQL Server (T-SQL).
-- **Hybrid Orchestration:** Bypasses LLM for deterministic tasks (like SQL execution) by using direct Python functions, drastically reducing API dependency and preventing HTTP 429 (Resource Exhausted) errors.
-- **Fast Track (Heuristic Visualization):** A Python-based routing logic that detects simple data shapes (e.g., 2 columns, < 20 rows) and generates Altair charts instantly, bypassing the LLM analysis step for lightning-fast responses.
-- **Unified Analysis Agent:** Merges visualization and explanation tasks into a single LLM call for complex queries, complete with robust JSON parsing.
+    %% เส้นทางส่งคำสั่งจาก Orchestrator (เส้นทึบ)
+    App -->|Prompt + Compressed Schema| SQLAgent
+    App -->|Clean SQL| DBTool
+    App --> Check
+    
+    %% เส้นทางส่งข้อมูลกลับมาที่ Orchestrator (เส้นประ ช่วยลดความสับสน)
+    SQLAgent -.->|SQL Query| App
+    DBTool -.->|JSON Results| App
+    Fast -.->|Chart & Insight| App
+    AI -.->|Chart & Insight| App
+    
+    App --> UI[Gradio UI]
+    
+    %% Styles
+    style User fill:#e1f5ff,stroke:#333,color: #000000
+    style App fill:#ffeba1,stroke:#333,stroke-width:2px,color: #000000
+    style SQLAgent fill:#ffe1e1,stroke:#333,color: #000000
+    style DBTool fill:#e1ffe1,stroke:#090,stroke-width:2px,color: #000000
+    style DB fill:#e1f5ff,stroke:#333,color: #000000
+    style Check fill:#fff3cd,stroke:#ffc107,color: #000000
+    style Fast fill:#d4edda,stroke:#28a745,stroke-width:2px,color: #000000
+    style AI fill:#ffe1f5,stroke:#333,color: #000000
+    style UI fill:#f0f0f0,stroke:#333,color: #000000
+```
 
 ## Architecture Evolution: The Optimization Journey
 
@@ -39,7 +84,7 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 | **3. Prompt Engineering** | 10/10 | ~27.8s | 3 - 4 | Average (Fixed SQL, bad charts) |
 | **4. Final Hybrid (Fast Track)**| **10/10** | **~12.0s** | **1 - 2** | **Excellent (Context-aware)** |
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Core Logic:** Python, Pandas
 - **LLM & Framework:** Google Gemini 2.5 Flash, Google ADK (Agent Development Kit)
@@ -47,11 +92,43 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 - **Visualization:** Altair
 - **Frontend:** Gradio
 
-## ⚙️ Installation & Setup
+## Installation & Setup
+1. Install uv
+```bash
+# macOS/Linux
+curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
 
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/your-username/Agentic-MIS.git](https://github.com/your-username/Agentic-MIS.git)
-   cd Agentic-MIS
+# Windows
+powershell -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex"
+```
+2. Clone the Repository
+```bash
+git clone https://github.com/paldee/Agentic-MIS.git
+cd Agentic-MIS
+```
+3. Create Virtual Environment & Install Dependencies
+```bash
+uv venv
+# On macOS/Linux:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+uv pip install -r requirements.txt
+```
+4. Configuration
+   Create a .env file in the bi_agent/ directory and configure your database and API credentials:
+```bash 
+# Google Gemini API
+GEMINI_API_KEY="your_google_gemini_api_key_here"
 
-
+# Microsoft SQL Server Database
+MSSQL_SERVER="your_server_name_or_ip"
+MSSQL_DATABASE="your_database_name"
+MSSQL_USERNAME="your_username"
+MSSQL_PASSWORD="your_password"
+MSSQL_DRIVER="ODBC Driver 18 for SQL Server"
+TRUST_SERVER_CERTIFICATE="true"
+```
+5. Run the Application
+```bash
+uv run app.py
