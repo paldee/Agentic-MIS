@@ -146,19 +146,9 @@ git clone [https://github.com/paldee/Agentic-MIS.git](https://github.com/paldee/
 cd Agentic-MIS
 ```
 
-### 3. Create Virtual Environment & Install Dependencies
+### 3. Sync Environment & Install Dependencies
 ```bash
-# Create a virtual environment
-uv venv
-
-# Activate the environment
-# On macOS/Linux:
-source .venv/bin/activate
-# On Windows:
-.venv\Scripts\activate
-
-# Install dependencies from requirements.txt
-uv pip install -r requirements.txt
+uv sync
 ```
 
 ### 4. Configuration
@@ -181,3 +171,4 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
