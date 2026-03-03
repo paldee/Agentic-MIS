@@ -113,7 +113,8 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 | **1. Original Baseline** | 2/10 | 32.4s | 4 - 5 | Poor (Wrong chart types) |
 | **2. Cut Middleman** | 7/10 | ~28.0s | 3 - 4 | Poor |
 | **3. Prompt Engineering** | 10/10 | ~27.8s | 3 - 4 | Average (Fixed SQL, bad charts) |
-| **4. Final Hybrid (Fast Track)**| **10/10** | **~12.0s** | **1 - 2** | **Excellent (Context-aware)** |
+| **4. Hybrid **| **10/10** | **~16.0s** | **1 - 2** | **Excellent (Context-aware)** |
+| **5. Final Hybrid (Fast Track)**| **10/10** | **~12.0s** | **1 - 2** | **Excellent (Context-aware)** |
 
 ---
 
@@ -171,4 +172,5 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
 
