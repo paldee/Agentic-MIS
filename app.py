@@ -1,12 +1,5 @@
-"""
-Gradio UI for the Business Intelligence Agent Pipeline.
-
-This app demonstrates Google ADK's SequentialAgent pattern:
-1. Text-to-SQL Agent (standalone)
-2. SQL execution via BIService
-3. Insight Pipeline (SequentialAgent: Visualization → Explanation)
-"""
-
+import time
+import pandas as pd
 import gradio as gr
 import asyncio
 import os
@@ -14,38 +7,25 @@ import pandas as pd
 import altair as alt
 from dotenv import load_dotenv
 from google.genai import types
+import json
 
 # Import root agent runner
-from bi_agent import root_runner
-
+from bi_agent.tools import execute_sql_and_format 
+from bi_agent.tools import get_database_schema
+from bi_agent.agent import text_to_sql_runner, analysis_runner
 # Load environment variables from bi_agent/.env
 load_dotenv(dotenv_path='bi_agent/.env')
 
 
 async def run_bi_pipeline_async(user_question: str):
-    """
-    Run the complete BI pipeline using root_runner.
-
-    This function executes the entire BI pipeline:
-    1. Text-to-SQL: Generate SQL from question
-    2. SQL Execution: Execute query against database
-    3. Data Formatting: Prepare results
-    4. Visualization: Generate Altair chart
-    5. Explanation: Provide plain-language insights
-
-    Args:
-        user_question: Natural language question from the user
-
-    Returns:
-        Dictionary with keys: sql_query, query_results, chart_spec, explanation_text
-    """
-    # Create session
-    session = await root_runner.session_service.create_session(
-        user_id='user',
-        app_name='bi_agent'
+    results = {}
+    start_step1 = time.time()
+    print("🤖 1. Generating SQL...")
+    session_sql = await text_to_sql_runner.session_service.create_session(
+        user_id='user', 
+        app_name='text_to_sql'
     )
 
-    from bi_agent.tools import get_database_schema
     schema_context = get_database_schema()
     enhanced_prompt = f"""
 Here is the Database Schema you must use:
@@ -53,28 +33,134 @@ Here is the Database Schema you must use:
 
 User Question: {user_question}
 """
-    # Create user message
-    content = types.Content(
-        role='user',
-        parts=[types.Part(text=enhanced_prompt)]
+
+    content_sql = types.Content(role='user', parts=[types.Part(text=enhanced_prompt)])
+    events_sql = text_to_sql_runner.run_async(
+        user_id='user', 
+        session_id=session_sql.id, 
+        new_message=content_sql
     )
-    
-    # Run the complete pipeline
-    events_async = root_runner.run_async(
-        user_id='user',
-        session_id=session.id,
-        new_message=content
+    sql_query = ""
+    async for event in events_sql:
+        if event.actions and event.actions.state_delta:
+            if 'sql_query' in event.actions.state_delta:
+                sql_query = event.actions.state_delta['sql_query']
+
+    results['sql_query'] = sql_query
+    end_step1 = time.time()
+    print(f"⏱️ เวลาที่ AI ใช้เขียน SQL: {end_step1 - start_step1:.2f} วินาที")
+# --------------------------------------------------------------------
+    start_step2 = time.time()
+    print("⚡️ 2. Executing SQL (Python)...")
+    if sql_query:
+        clean_sql = sql_query.replace("```sql", "").replace("```", "").strip()
+        try:
+            query_results_json = execute_sql_and_format(clean_sql)
+            results['query_results'] = query_results_json
+        except Exception as e:
+            results['query_results'] = json.dumps({"success": False, "error": str(e)})
+            return results # Stop if execution fails
+    else:
+        return results
+    end_step2 = time.time()
+    print(f"⏱️ เวลาที่ Database ใช้ดึงข้อมูล: {end_step2 - start_step2:.2f} วินาที")
+    try:
+        data_dict = json.loads(query_results_json)
+        if data_dict.get('success') and data_dict.get('data'):
+            df_temp = pd.DataFrame(data_dict['data'])
+
+            fast_chart_spec, fast_explanation = get_heuristic_analysis(df_temp)
+
+            if fast_chart_spec and fast_explanation:
+                print("🚀 FAST TRACK: Using Python to generate chart (Skipping AI Analysis!)")
+                results['chart_spec'] = fast_chart_spec
+                results['explanation_text'] = fast_explanation
+
+                return results 
+    except Exception as e:
+        print(f"Heuristic bypass failed: {e}")
+# ------------------------------------------------------------------------
+    session_viz = await analysis_runner.session_service.create_session(
+        user_id='user', 
+        app_name='analysis'
+    )
+    analysis_prompt = f"""
+Analyze the following data results:
+{results['query_results']}
+
+Remember to return JSON with 'chart_spec' and 'explanation'.
+"""
+    content_viz = types.Content(role='user', parts=[types.Part(text=analysis_prompt)])
+
+    # Run Agent 2: Analyze Data (Viz + Explain combined)
+    events_viz = analysis_runner.run_async(
+        user_id='user', 
+        session_id=session_viz.id, 
+        new_message=content_viz
     )
 
-    # Extract results from state
-    results = {}
-    async for event in events_async:
+    async for event in events_viz:
         if event.actions and event.actions.state_delta:
-            for key, value in event.actions.state_delta.items():
-                results[key] = value
+            if 'analysis_result' in event.actions.state_delta:
+                raw_output = event.actions.state_delta['analysis_result']
+
+                try:
+
+                    clean_output = raw_output.replace("```json", "").replace("```", "").strip()
+
+                    start_index = clean_output.find('{')
+                    end_index = clean_output.rfind('}') + 1
+
+                    if start_index != -1 and end_index != -1:
+                        json_str = clean_output[start_index:end_index]
+                        analysis_data = json.loads(json_str)
+
+                        results['chart_spec'] = analysis_data.get('chart_spec', '')
+                        results['explanation_text'] = analysis_data.get('explanation', '')
+                    else:
+                        print(f"⚠️ Warning: Could not find JSON brackets in: {raw_output}")
+                        results['explanation_text'] = raw_output
+
+                except Exception as e:
+                    print(f"❌ JSON Parse Error: {e}")
+                    print(f"Raw Output: {raw_output}")
+                    results['explanation_text'] = f"Error parsing insights. Raw: {raw_output[:100]}..."
 
     return results
 
+def get_heuristic_analysis(df: pd.DataFrame):
+    if df.empty:
+        return None, None
+        
+    cols = df.columns
+    if len(cols) == 2 and len(df) <= 20:
+        col0_test = pd.to_numeric(df[cols[0]], errors='coerce')
+        col1_test = pd.to_numeric(df[cols[1]], errors='coerce')
+        is_num_0 = col0_test.notna().all()
+        is_num_1 = col1_test.notna().all()
+        
+        if is_num_0 != is_num_1:
+            dim = cols[1] if is_num_0 else cols[0]
+            val = cols[0] if is_num_0 else cols[1]
+            
+            chart_spec = f"""chart = alt.Chart(df).mark_bar().encode(x=alt.X('{val}:Q'),y=alt.Y('{dim}:N', sort='-x', title=None),tooltip=['{dim}', '{val}']).properties(title='{val} by {dim}').interactive()"""
+            top_row = df.sort_values(by=val, ascending=False).iloc[0]
+            val_formatted = f"{top_row[val]:,.2f}" if isinstance(top_row[val], float) else f"{top_row[val]}"
+            explanation = f"The highest `{dim}` is **{top_row[dim]}** with a total `{val}` of {val_formatted}."
+            
+            return chart_spec, explanation
+
+    if len(df) == 1 and len(cols) > 1:
+        if all(pd.api.types.is_numeric_dtype(df[c]) for c in cols):
+            chart_spec = """df_melted = df.melt(var_name='Metric', value_name='Value')
+base = alt.Chart(df_melted).encode(x='Value:Q', y=alt.Y('Metric:N', title=None, sort='-x'))
+bars = base.mark_bar()
+text = base.mark_text(align='left', dx=5).encode(text='Value:Q')
+chart = (bars + text).properties(title='Key Metrics Overview').interactive()
+"""
+            explanation = "⚡️ **Fast Analysis:** The chart displays the key metrics from your query for direct comparison."
+            return chart_spec, explanation
+    return None, None
 
 async def process_request_async(message: str):
     """
@@ -113,7 +199,6 @@ async def process_request_async(message: str):
         # Extract query results
         query_results_str = results.get('query_results', '{}')
         try:
-            import json
             query_results = json.loads(query_results_str) if isinstance(query_results_str, str) else query_results_str
         except:
             query_results = {'success': False, 'data': [], 'error': 'Failed to parse query results'}

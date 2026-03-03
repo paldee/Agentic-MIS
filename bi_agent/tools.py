@@ -173,24 +173,7 @@ def execute_sql_and_format(sql_query: str) -> str:
 
 def get_database_schema() -> str:
     """
-    Retrieve database schema information for SQL query generation.
-
-    Returns formatted schema showing available tables and columns that can be
-    queried. This helps the text-to-SQL agent understand the database structure.
-
-    Returns:
-        Formatted string containing database schema information
-
-    Example:
-        >>> schema = get_database_schema()
-        >>> print(schema)
-        Database Schema:
-
-        Table: dbo.Products
-        Columns:
-          - ProductID (int, NOT NULL)
-          - ProductName (nvarchar, NOT NULL)
-          ...
+    Retrieve ONLY core database schema (Dim & Facts) and compress the text.
     """
     try:
         # Get database credentials from environment
@@ -208,13 +191,40 @@ def get_database_schema() -> str:
         # Create database engine
         engine = create_db_engine(server, database, username, password, driver, trust_cert)
 
-        # Get schema info
-        schema_info = get_schema_info(engine, max_tables=100)
+        # 🚀 1. FILTER NOISE: ดึงเฉพาะตาราง Dim และ Facts ตัดตารางซ้ำซ้อนทิ้ง
+        query = """
+        SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND (TABLE_NAME LIKE 'Dim_%' OR TABLE_NAME LIKE 'Facts_%')
+          AND TABLE_NAME NOT LIKE 'DataSet_%'
+          AND TABLE_NAME NOT LIKE 'Datensatz_%'
+        ORDER BY TABLE_NAME, ORDINAL_POSITION;
+        """
 
-        # Close engine
+        df_schema = pd.read_sql(query, engine)
+
         engine.dispose()
 
-        return schema_info
+        if df_schema.empty:
+            return "Error: Could not retrieve schema or no matching Dim/Facts tables found."
+
+        schema_dict = {}
+        for _, row in df_schema.iterrows():
+            t_name = row['TABLE_NAME']
+            d_type = row['DATA_TYPE'].replace('nvarchar', 'str').replace('varchar', 'str').replace('datetime', 'date')
+            
+            c_info = f"{row['COLUMN_NAME']}({d_type})"
+            
+            if t_name not in schema_dict:
+                schema_dict[t_name] = []
+            schema_dict[t_name].append(c_info)
+
+        compact_schema = "Database Schema (Only Core Tables):\n"
+        for t_name, cols in schema_dict.items():
+            compact_schema += f"- {t_name}: " + ", ".join(cols) + "\n"
+
+        return compact_schema
 
     except Exception as e:
         return f"Error retrieving schema: {str(e)}"

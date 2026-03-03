@@ -6,43 +6,24 @@ for the BI agent pipeline using Google ADK.
 """
 
 from bi_agent.agent import (
-    # Root agent (main entry point for ADK web)
-    root_agent,
-    root_runner,
-    # Individual agents
+    # Constants
+    GEMINI_MODEL,
+    # Agents & Runners (เหลือแค่ 2 ตัวเทพ)
     text_to_sql_agent,
     text_to_sql_runner,
-    sql_executor_agent,
-    data_formatter_agent,
-    visualization_agent,
-    explanation_agent,
-    # Pipelines
-    insight_pipeline,
-    insight_runner,
-    # Constants
-    GEMINI_MODEL
+    analysis_agent,
+    analysis_runner
 )
 
 from bi_agent.bi_service import BIService
 from bi_agent.tools import DatabaseTools, execute_sql_and_format, get_database_schema
 
 __all__ = [
-    # Root agent (required for ADK web)
-    'root_agent',
-    'root_runner',
-    # Individual agents
+    'GEMINI_MODEL',
     'text_to_sql_agent',
     'text_to_sql_runner',
-    'sql_executor_agent',
-    'data_formatter_agent',
-    'visualization_agent',
-    'explanation_agent',
-    # Pipelines
-    'insight_pipeline',
-    'insight_runner',
-    # Constants
-    'GEMINI_MODEL',
-    # Services and Tools
+    'analysis_agent',
+    'analysis_runner',
     'BIService',
     'DatabaseTools',
     'execute_sql_and_format',

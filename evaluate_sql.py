@@ -1,23 +1,53 @@
 import asyncio
 import json
 import os
-import time
+import pandas as pd
 from dotenv import load_dotenv
-from google.api_core import exceptions  
 
-# Import modules
+# Import modules (อ้างอิงตามโครงสร้างโปรเจกต์ของคุณ)
 from bi_agent.agent import text_to_sql_runner
 from bi_agent.bi_service import BIService
 from google.genai import types
-
 from bi_agent.tools import get_database_schema
 
 load_dotenv(dotenv_path='bi_agent/.env')
 
+def compare_dataframes(df_gen, df_truth):
+
+    try:
+        if df_gen is None or df_truth is None:
+            return False
+        
+        # 1. ถ้าจำนวนแถวหรือคอลัมน์ไม่เท่ากัน ผิดแน่นอน
+        if df_gen.shape != df_truth.shape:
+            return False
+
+        # 2. Copy ข้อมูลออกมาเพื่อไม่ให้กระทบตัวแปรเดิม
+        dg = df_gen.copy()
+        dt = df_truth.copy()
+
+        # 3. Normalize ชื่อคอลัมน์ (ป้องกันปัญหาเรื่อง Alias เช่น Total_Revenue vs SUM(Revenue))
+        dg.columns = [f"col_{i}" for i in range(len(dg.columns))]
+        dt.columns = [f"col_{i}" for i in range(len(dt.columns))]
+
+        # 4. จัดการเรื่องทศนิยม (Rounding) ป้องกันปัญหา Float precision (เช่น 10.0000001 vs 10.0)
+        dg = dg.round(4)
+        dt = dt.round(4)
+
+        # 5. Sort ข้อมูลตามทุกคอลัมน์และ Reset Index (ป้องกันปัญหาการสลับแถว)
+        dg = dg.sort_values(by=list(dg.columns)).reset_index(drop=True)
+        dt = dt.sort_values(by=list(dt.columns)).reset_index(drop=True)
+
+        # 6. เปรียบเทียบข้อมูลข้างใน
+        return dg.equals(dt)
+    except Exception as e:
+        print(f"   ⚠️ Comparison Error: {e}")
+        return False
+
 async def evaluate():
-    print("🚀 Starting Evaluation (Safety Mode: Ultra Slow)...")
+    print("🚀 Starting Evaluation (Safety Mode: Professional Logic)...")
     
-    # ... (ส่วน connect db เหมือนเดิม) ...
+    # 1. Database Connection
     db_service = BIService(
         server=os.getenv("MSSQL_SERVER"),
         database=os.getenv("MSSQL_DATABASE"),
@@ -29,22 +59,23 @@ async def evaluate():
         print(f"❌ DB Connect Fail: {msg}")
         return
 
+    # 2. Load Test Cases
     try:
-        with open('evaluation_set.json', 'r') as f:
+        with open('evaluation_set.json', 'r', encoding='utf-8') as f:
             test_cases = json.load(f)
-    except:
+    except FileNotFoundError:
         print("❌ No evaluation_set.json found")
         return
 
     score = 0
     total = len(test_cases)
     schema_context = get_database_schema()
+
     for i, case in enumerate(test_cases):
         print(f"\n[{i+1}/{total}] 🔹 Question: {case['question']}")
         
-        # 🛡️ พักยาวๆ 30 วินาที ก่อนเริ่มข้อใหม่ (Free Tier ต้องใจเย็น)
+        # 🛡️ Cooling down (Free Tier Safety)
         print("   💤 Cooling down (30s)... ", end="", flush=True)
-        # แบ่งรอทีละนิดเพื่อให้กด Ctrl+C หยุดได้ถ้าต้องการ
         for _ in range(30):
             await asyncio.sleep(1)
             print(".", end="", flush=True)
@@ -52,70 +83,73 @@ async def evaluate():
 
         retry_count = 0
         max_retries = 3
+        generated_sql = ""
         
         while retry_count < max_retries:
             try:
-                # สร้าง Session ใหม่
+                # สร้าง Session ใหม่สำหรับแต่ละข้อ
                 session = await text_to_sql_runner.session_service.create_session(
                     user_id='test_user', app_name='text_to_sql'
                 )
 
-                enhanced_prompt = f"""Here is the Database Schema you must use:{schema_context}User Question: {case['question']}"""
+                enhanced_prompt = f"Here is the Database Schema:\n{schema_context}\n\nUser Question: {case['question']}"
                 content = types.Content(role='user', parts=[types.Part(text=enhanced_prompt)])
- 
-                # รัน Agent
+
+                # รัน Agent ดึงผลลัพธ์
                 events = text_to_sql_runner.run_async(user_id='test_user', session_id=session.id, new_message=content)
                 
-                generated_sql = ""
                 async for event in events:
                     if event.actions and event.actions.state_delta:
                         generated_sql = event.actions.state_delta.get('sql_query', '')
                 
-                # ถ้าผ่านมาถึงตรงนี้แปลว่าไม่ Error -> หลุด loop retry
-                break 
+                if generated_sql:
+                    break 
 
             except Exception as e:
-                # เช็คว่าเป็น Error 429 หรือไม่
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                     retry_count += 1
-                    wait_time = retry_count * 20 # รอเพิ่มขึ้นเรื่อยๆ 20s, 40s, 60s
-                    print(f"\n   ⚠️ Hit Rate Limit! Retrying in {wait_time}s... (Attempt {retry_count}/{max_retries})")
+                    wait_time = retry_count * 20
+                    print(f"\n   ⚠️ Hit Rate Limit! Retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 else:
                     print(f"   ❌ Agent Error: {e}")
-                    generated_sql = "" # Error อื่นที่ไม่ใช่ Rate Limit ให้ข้ามเลย
                     break
 
         if not generated_sql:
             print("   ⚠️ No SQL returned or Failed after retries")
             continue
 
-        # ... (ส่วนตรวจคำตอบ เหมือนเดิม) ...
-        # Clean SQL
-        generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
-        print(f"   🤖 Generated SQL: {generated_sql}")
+        # Clean SQL String
+        clean_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
+        print(f"   🤖 Generated SQL: {clean_sql}")
         
-        # ... (Run SQL check logic) ...
-        # (Copy Logic เดิมมาใส่ตรงนี้ได้เลยครับ)
-        # ---------------------------------------------------
+        # 3. Check Results (The Core Logic)
         try:
-             res_gen = db_service.execute_sql(generated_sql)
-             res_truth = db_service.execute_sql(case['ground_truth_sql'])
-             
-             if res_gen['success'] and res_truth['success']:
-                if res_gen['data'].equals(res_truth['data']):
+            res_gen = db_service.execute_sql(clean_sql)
+            res_truth = db_service.execute_sql(case['ground_truth_sql'])
+            
+            if res_gen['success'] and res_truth['success']:
+                # ใช้ฟังก์ชันเปรียบเทียบระดับโปรที่เราเขียนไว้
+                is_correct = compare_dataframes(res_gen['data'], res_truth['data'])
+                
+                if is_correct:
                     print("   ✅ CORRECT")
                     score += 1
                 else:
-                    print("   ❌ INCORRECT (Data mismatch)")
-             else:
-                print(f"   ❌ SQL Execution Error: {res_gen.get('error', 'Unknown')}")
+                    print("   ❌ INCORRECT (Data mismatch or Column name issue)")
+                    # Debug: พิมพ์ออกมาดูว่าต่างกันตรงไหน
+                    # print(f"Generated Data:\n{res_gen['data'].head(2)}")
+                    # print(f"Truth Data:\n{res_truth['data'].head(2)}")
+            else:
+                err_msg = res_gen.get('error', 'Unknown Error')
+                print(f"   ❌ SQL Execution Error: {err_msg}")
+
         except Exception as db_err:
              print(f"   ❌ DB Check Error: {db_err}")
-        # ---------------------------------------------------
-
-    print(f"\n🎯 Final Score: {score}/{total}")
+    # 4. Final Summary
+    print("-" * 30)
+    print(f"🎯 Final Accuracy Score: {score}/{total} ({(score/total)*100:.2f}%)")
+    print("-" * 30)
     db_service.close()
 
 if __name__ == "__main__":
