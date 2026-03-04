@@ -153,7 +153,20 @@ uv sync
 ```
 
 ### 4. Configuration
-Create a `.env` file in the root directory and configure your database and API credentials:
+ You must create the `.env` file **INSIDE** the `bi_agent/` directory
+
+Your folder structure should look like this:
+```text
+Agentic-MIS/
+├── app.py
+├── requirements.txt
+└── bi_agent/          <-- Create your .env file HERE
+    ├── .env           
+    ├── agent.py
+    ├── tools.py
+    └── ...
+```
+configure your database and API credentials:
 ```env
 # Google Gemini API
 GEMINI_API_KEY="your_google_gemini_api_key_here"
@@ -172,6 +185,7 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
 
 
 
