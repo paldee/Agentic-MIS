@@ -64,7 +64,7 @@ flowchart TD
 
 ---
 
-## 📖 System Overview (Architecture, Prompts, Safety, & Evaluation)
+## System Overview (Architecture, Prompts, Safety, & Evaluation)
 
 ### 1. Hybrid Architecture (AI + Python Orchestration)
 The system transitioned from a traditional sequential agent chain (Waterfall model) to a **Hybrid Orchestration Architecture**, reducing API calls by over 50% and improving response time from 32.4 seconds to approximately 10 seconds.
@@ -93,7 +93,7 @@ The pipeline was iteratively tested and measured against a baseline using three 
 
 ---
 
-## 📈 Architecture Evolution: The Optimization Journey
+## Architecture Evolution: The Optimization Journey
 
 ### V1: The Baseline (Full Sequential Agent)
 * **Flow:** `Text-to-SQL -> SQL Executor (AI) -> Data Formatter (AI) -> Visualization (AI) -> Explanation (AI)`
@@ -106,7 +106,7 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 3. **Smart Routing:** * *Fast Track:* Simple data is visualized instantly via Python rules.
     * *Deep Analysis:* Complex data is sent to a single, unified 2-in-1 AI Agent.
 
-## 📊 Performance Metrics
+## Performance Metrics
 
 | Architecture Phase | Accuracy | Latency | API Calls/Query | Visualization Quality |
 | :--- | :---: | :---: | :---: | :--- |
@@ -118,7 +118,7 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 * **Core Logic:** Python, Pandas
 * **LLM & Framework:** Google Gemini 2.5 Flash, Google ADK (Agent Development Kit)
@@ -128,7 +128,7 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 
 ---
 
-## 🚀 Installation & Setup (Reproducible Environment)
+## Installation & Setup (Reproducible Environment)
 
 We use `uv` as our highly optimized Python package manager to ensure reproducible builds.
 
@@ -172,6 +172,7 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
 
 
 
