@@ -143,7 +143,7 @@ powershell -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/insta
 
 ### 2. Clone the Repository
 ```bash
-git clone [https://github.com/paldee/Agentic-MIS.git](https://github.com/paldee/Agentic-MIS.git)
+git clone https://github.com/paldee/Agentic-MIS.git
 cd Agentic-MIS
 ```
 
@@ -172,6 +172,7 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
 
 
 
