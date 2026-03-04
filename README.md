@@ -117,6 +117,10 @@ Redesigned the system to use **Manual Orchestration (`app.py`)**:
 | **5. Final Hybrid (Fast Track)**| **10/10** | **~12.0s** | **1 - 2** | **Excellent (Context-aware)** |
 
 ---
+## User Interface and User Experience Design	
+The primary objective of the UI design is to provide users with a clear and intuitive overview of the system, thereby ensuring an optimal user experience. To achieve this, the interface architecture utilizes Gradio for structural layout and component partitioning, CSS for refined aesthetic styling, and JavaScript to facilitate dynamic and seamless interactivity between the user and the application.
+
+---
 
 ## Tech Stack
 
@@ -185,6 +189,7 @@ TRUST_SERVER_CERTIFICATE="true"
 uv run app.py
 ```
 Access at: http://127.0.0.1:7860
+
 
 
 
